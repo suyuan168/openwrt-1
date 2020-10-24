@@ -1,0 +1,181 @@
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 3 Dec 2020 13:23:41 +0100
+Subject: [PATCH] netfilter: flowtable: remove unnecessary function pointer
+ indirection
+
+nf_flow_rule_route_ipv4/ipv6 is defined in nf_flow_table_offload.c and only
+used (through indirection) from the same source file.
+That makes the .action function pointer in struct nf_flowtable_type completely
+pointless.
+Simplify the code by removing this indirection and make those function static
+
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+
+--- a/include/net/netfilter/nf_flow_table.h
++++ b/include/net/netfilter/nf_flow_table.h
+@@ -52,10 +52,6 @@ struct nf_flowtable_type {
+ 	int				(*setup)(struct nf_flowtable *ft,
+ 						 struct net_device *dev,
+ 						 enum flow_block_command cmd);
+-	int				(*action)(struct net *net,
+-						  const struct flow_offload *flow,
+-						  enum flow_offload_tuple_dir dir,
+-						  struct nf_flow_rule *flow_rule);
+ 	void				(*free)(struct nf_flowtable *ft);
+ 	nf_hookfn			*hook;
+ 	struct module			*owner;
+@@ -290,12 +286,6 @@ void nf_flow_table_offload_flush(struct
+ int nf_flow_table_offload_setup(struct nf_flowtable *flowtable,
+ 				struct net_device *dev,
+ 				enum flow_block_command cmd);
+-int nf_flow_rule_route_ipv4(struct net *net, const struct flow_offload *flow,
+-			    enum flow_offload_tuple_dir dir,
+-			    struct nf_flow_rule *flow_rule);
+-int nf_flow_rule_route_ipv6(struct net *net, const struct flow_offload *flow,
+-			    enum flow_offload_tuple_dir dir,
+-			    struct nf_flow_rule *flow_rule);
+ 
+ int nf_flow_table_offload_init(void);
+ void nf_flow_table_offload_exit(void);
+--- a/net/ipv4/netfilter/nf_flow_table_ipv4.c
++++ b/net/ipv4/netfilter/nf_flow_table_ipv4.c
+@@ -10,7 +10,6 @@ static struct nf_flowtable_type flowtabl
+ 	.family		= NFPROTO_IPV4,
+ 	.init		= nf_flow_table_init,
+ 	.setup		= nf_flow_table_offload_setup,
+-	.action		= nf_flow_rule_route_ipv4,
+ 	.free		= nf_flow_table_free,
+ 	.hook		= nf_flow_offload_ip_hook,
+ 	.owner		= THIS_MODULE,
+--- a/net/ipv6/netfilter/nf_flow_table_ipv6.c
++++ b/net/ipv6/netfilter/nf_flow_table_ipv6.c
+@@ -11,7 +11,6 @@ static struct nf_flowtable_type flowtabl
+ 	.family		= NFPROTO_IPV6,
+ 	.init		= nf_flow_table_init,
+ 	.setup		= nf_flow_table_offload_setup,
+-	.action		= nf_flow_rule_route_ipv6,
+ 	.free		= nf_flow_table_free,
+ 	.hook		= nf_flow_offload_ipv6_hook,
+ 	.owner		= THIS_MODULE,
+--- a/net/netfilter/nf_flow_table_inet.c
++++ b/net/netfilter/nf_flow_table_inet.c
+@@ -21,34 +21,10 @@ nf_flow_offload_inet_hook(void *priv, st
+ 	return NF_ACCEPT;
+ }
+ 
+-static int nf_flow_rule_route_inet(struct net *net,
+-				   const struct flow_offload *flow,
+-				   enum flow_offload_tuple_dir dir,
+-				   struct nf_flow_rule *flow_rule)
+-{
+-	const struct flow_offload_tuple *flow_tuple = &flow->tuplehash[dir].tuple;
+-	int err;
+-
+-	switch (flow_tuple->l3proto) {
+-	case NFPROTO_IPV4:
+-		err = nf_flow_rule_route_ipv4(net, flow, dir, flow_rule);
+-		break;
+-	case NFPROTO_IPV6:
+-		err = nf_flow_rule_route_ipv6(net, flow, dir, flow_rule);
+-		break;
+-	default:
+-		err = -1;
+-		break;
+-	}
+-
+-	return err;
+-}
+-
+ static struct nf_flowtable_type flowtable_inet = {
+ 	.family		= NFPROTO_INET,
+ 	.init		= nf_flow_table_init,
+ 	.setup		= nf_flow_table_offload_setup,
+-	.action		= nf_flow_rule_route_inet,
+ 	.free		= nf_flow_table_free,
+ 	.hook		= nf_flow_offload_inet_hook,
+ 	.owner		= THIS_MODULE,
+--- a/net/netfilter/nf_flow_table_offload.c
++++ b/net/netfilter/nf_flow_table_offload.c
+@@ -547,9 +547,10 @@ static void flow_offload_decap_tunnel(co
+ 	}
+ }
+ 
+-int nf_flow_rule_route_ipv4(struct net *net, const struct flow_offload *flow,
+-			    enum flow_offload_tuple_dir dir,
+-			    struct nf_flow_rule *flow_rule)
++static int
++nf_flow_rule_route_common(struct net *net, const struct flow_offload *flow,
++			  enum flow_offload_tuple_dir dir,
++			  struct nf_flow_rule *flow_rule)
+ {
+ 	flow_offload_decap_tunnel(flow, dir, flow_rule);
+ 	flow_offload_encap_tunnel(flow, dir, flow_rule);
+@@ -558,6 +559,17 @@ int nf_flow_rule_route_ipv4(struct net *
+ 	    flow_offload_eth_dst(net, flow, dir, flow_rule) < 0)
+ 		return -1;
+ 
++	return 0;
++}
++
++static int
++nf_flow_rule_route_ipv4(struct net *net, const struct flow_offload *flow,
++			enum flow_offload_tuple_dir dir,
++			struct nf_flow_rule *flow_rule)
++{
++	if (nf_flow_rule_route_common(net, flow, dir, flow_rule))
++		return -1;
++
+ 	if (test_bit(NF_FLOW_SNAT, &flow->flags)) {
+ 		flow_offload_ipv4_snat(net, flow, dir, flow_rule);
+ 		flow_offload_port_snat(net, flow, dir, flow_rule);
+@@ -574,17 +586,13 @@ int nf_flow_rule_route_ipv4(struct net *
+ 
+ 	return 0;
+ }
+-EXPORT_SYMBOL_GPL(nf_flow_rule_route_ipv4);
+ 
+-int nf_flow_rule_route_ipv6(struct net *net, const struct flow_offload *flow,
+-			    enum flow_offload_tuple_dir dir,
+-			    struct nf_flow_rule *flow_rule)
++static int
++nf_flow_rule_route_ipv6(struct net *net, const struct flow_offload *flow,
++			enum flow_offload_tuple_dir dir,
++			struct nf_flow_rule *flow_rule)
+ {
+-	flow_offload_decap_tunnel(flow, dir, flow_rule);
+-	flow_offload_encap_tunnel(flow, dir, flow_rule);
+-
+-	if (flow_offload_eth_src(net, flow, dir, flow_rule) < 0 ||
+-	    flow_offload_eth_dst(net, flow, dir, flow_rule) < 0)
++	if (nf_flow_rule_route_common(net, flow, dir, flow_rule))
+ 		return -1;
+ 
+ 	if (test_bit(NF_FLOW_SNAT, &flow->flags)) {
+@@ -600,7 +608,6 @@ int nf_flow_rule_route_ipv6(struct net *
+ 
+ 	return 0;
+ }
+-EXPORT_SYMBOL_GPL(nf_flow_rule_route_ipv6);
+ 
+ #define NF_FLOW_RULE_ACTION_MAX	16
+ 
+@@ -636,7 +643,17 @@ nf_flow_offload_rule_alloc(struct net *n
+ 		goto err_flow_match;
+ 
+ 	flow_rule->rule->action.num_entries = 0;
+-	if (flowtable->type->action(net, flow, dir, flow_rule) < 0)
++	switch (tuple->l3proto) {
++	case NFPROTO_IPV4:
++		err = nf_flow_rule_route_ipv4(net, flow, dir, flow_rule);
++		break;
++	case NFPROTO_IPV6:
++		err = nf_flow_rule_route_ipv6(net, flow, dir, flow_rule);
++		break;
++	default:
++		err = -EINVAL;
++	}
++	if (err)
+ 		goto err_flow_match;
+ 
+ 	return flow_rule;
