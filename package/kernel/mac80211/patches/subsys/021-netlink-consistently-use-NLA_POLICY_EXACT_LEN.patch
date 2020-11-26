@@ -1,0 +1,28 @@
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Tue, 18 Aug 2020 10:17:31 +0200
+Subject: [PATCH] netlink: consistently use NLA_POLICY_EXACT_LEN()
+
+Change places that open-code NLA_POLICY_EXACT_LEN() to
+use the macro instead, giving us flexibility in how we
+handle the details of the macro.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+Acked-by: Matthieu Baerts <matthieu.baerts@tessares.net>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -654,10 +654,8 @@ static const struct nla_policy nl80211_p
+ 	[NL80211_ATTR_RECEIVE_MULTICAST] = { .type = NLA_FLAG },
+ 	[NL80211_ATTR_WIPHY_FREQ_OFFSET] = NLA_POLICY_RANGE(NLA_U32, 0, 999),
+ 	[NL80211_ATTR_SCAN_FREQ_KHZ] = { .type = NLA_NESTED },
+-	[NL80211_ATTR_HE_6GHZ_CAPABILITY] = {
+-		.type = NLA_EXACT_LEN,
+-		.len = sizeof(struct ieee80211_he_6ghz_capa),
+-	},
++	[NL80211_ATTR_HE_6GHZ_CAPABILITY] =
++		NLA_POLICY_EXACT_LEN(sizeof(struct ieee80211_he_6ghz_capa)),
+ };
+ 
+ /* policy for the key attributes */
