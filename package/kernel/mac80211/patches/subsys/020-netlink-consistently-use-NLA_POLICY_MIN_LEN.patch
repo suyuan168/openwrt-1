@@ -1,0 +1,34 @@
+From: Johannes Berg <johannes.berg@intel.com>
+Date: Tue, 18 Aug 2020 10:17:32 +0200
+Subject: [PATCH] netlink: consistently use NLA_POLICY_MIN_LEN()
+
+Change places that open-code NLA_POLICY_MIN_LEN() to
+use the macro instead, giving us flexibility in how we
+handle the details of the macro.
+
+Signed-off-by: Johannes Berg <johannes.berg@intel.com>
+Signed-off-by: David S. Miller <davem@davemloft.net>
+---
+
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -703,7 +703,7 @@ nl80211_wowlan_tcp_policy[NUM_NL80211_WO
+ 	[NL80211_WOWLAN_TCP_DST_MAC] = NLA_POLICY_EXACT_LEN_WARN(ETH_ALEN),
+ 	[NL80211_WOWLAN_TCP_SRC_PORT] = { .type = NLA_U16 },
+ 	[NL80211_WOWLAN_TCP_DST_PORT] = { .type = NLA_U16 },
+-	[NL80211_WOWLAN_TCP_DATA_PAYLOAD] = { .type = NLA_MIN_LEN, .len = 1 },
++	[NL80211_WOWLAN_TCP_DATA_PAYLOAD] = NLA_POLICY_MIN_LEN(1),
+ 	[NL80211_WOWLAN_TCP_DATA_PAYLOAD_SEQ] = {
+ 		.len = sizeof(struct nl80211_wowlan_tcp_data_seq)
+ 	},
+@@ -711,8 +711,8 @@ nl80211_wowlan_tcp_policy[NUM_NL80211_WO
+ 		.len = sizeof(struct nl80211_wowlan_tcp_data_token)
+ 	},
+ 	[NL80211_WOWLAN_TCP_DATA_INTERVAL] = { .type = NLA_U32 },
+-	[NL80211_WOWLAN_TCP_WAKE_PAYLOAD] = { .type = NLA_MIN_LEN, .len = 1 },
+-	[NL80211_WOWLAN_TCP_WAKE_MASK] = { .type = NLA_MIN_LEN, .len = 1 },
++	[NL80211_WOWLAN_TCP_WAKE_PAYLOAD] = NLA_POLICY_MIN_LEN(1),
++	[NL80211_WOWLAN_TCP_WAKE_MASK] = NLA_POLICY_MIN_LEN(1),
+ };
+ #endif /* CONFIG_PM */
+ 

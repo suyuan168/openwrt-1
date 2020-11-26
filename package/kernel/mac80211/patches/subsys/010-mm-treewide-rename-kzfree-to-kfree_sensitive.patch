@@ -1,0 +1,385 @@
+From: Waiman Long <longman@redhat.com>
+Date: Thu, 6 Aug 2020 23:18:13 -0700
+Subject: [PATCH] mm, treewide: rename kzfree() to kfree_sensitive()
+
+As said by Linus:
+
+  A symmetric naming is only helpful if it implies symmetries in use.
+  Otherwise it's actively misleading.
+
+  In "kzalloc()", the z is meaningful and an important part of what the
+  caller wants.
+
+  In "kzfree()", the z is actively detrimental, because maybe in the
+  future we really _might_ want to use that "memfill(0xdeadbeef)" or
+  something. The "zero" part of the interface isn't even _relevant_.
+
+The main reason that kzfree() exists is to clear sensitive information
+that should not be leaked to other future users of the same memory
+objects.
+
+Rename kzfree() to kfree_sensitive() to follow the example of the recently
+added kvfree_sensitive() and make the intention of the API more explicit.
+In addition, memzero_explicit() is used to clear the memory to make sure
+that it won't get optimized away by the compiler.
+
+The renaming is done by using the command sequence:
+
+  git grep -w --name-only kzfree |\
+  xargs sed -i 's/kzfree/kfree_sensitive/'
+
+followed by some editing of the kfree_sensitive() kerneldoc and adding
+a kzfree backward compatibility macro in slab.h.
+
+[akpm@linux-foundation.org: fs/crypto/inline_crypt.c needs linux/slab.h]
+[akpm@linux-foundation.org: fix fs/crypto/inline_crypt.c some more]
+
+Suggested-by: Joe Perches <joe@perches.com>
+Signed-off-by: Waiman Long <longman@redhat.com>
+Signed-off-by: Andrew Morton <akpm@linux-foundation.org>
+Acked-by: David Howells <dhowells@redhat.com>
+Acked-by: Michal Hocko <mhocko@suse.com>
+Acked-by: Johannes Weiner <hannes@cmpxchg.org>
+Cc: Jarkko Sakkinen <jarkko.sakkinen@linux.intel.com>
+Cc: James Morris <jmorris@namei.org>
+Cc: "Serge E. Hallyn" <serge@hallyn.com>
+Cc: Joe Perches <joe@perches.com>
+Cc: Matthew Wilcox <willy@infradead.org>
+Cc: David Rientjes <rientjes@google.com>
+Cc: Dan Carpenter <dan.carpenter@oracle.com>
+Cc: "Jason A . Donenfeld" <Jason@zx2c4.com>
+Link: http://lkml.kernel.org/r/20200616154311.12314-3-longman@redhat.com
+Signed-off-by: Linus Torvalds <torvalds@linux-foundation.org>
+---
+
+--- a/drivers/net/wireless/intel/iwlwifi/pcie/rx.c
++++ b/drivers/net/wireless/intel/iwlwifi/pcie/rx.c
+@@ -1369,7 +1369,7 @@ static void iwl_pcie_rx_handle_rb(struct
+ 					   &rxcb, rxq->id);
+ 
+ 		if (reclaim) {
+-			kzfree(txq->entries[cmd_index].free_buf);
++			kfree_sensitive(txq->entries[cmd_index].free_buf);
+ 			txq->entries[cmd_index].free_buf = NULL;
+ 		}
+ 
+--- a/drivers/net/wireless/intel/iwlwifi/pcie/tx-gen2.c
++++ b/drivers/net/wireless/intel/iwlwifi/pcie/tx-gen2.c
+@@ -1026,7 +1026,7 @@ static int iwl_pcie_gen2_enqueue_hcmd(st
+ 	BUILD_BUG_ON(IWL_TFH_NUM_TBS > sizeof(out_meta->tbs) * BITS_PER_BYTE);
+ 	out_meta->flags = cmd->flags;
+ 	if (WARN_ON_ONCE(txq->entries[idx].free_buf))
+-		kzfree(txq->entries[idx].free_buf);
++		kfree_sensitive(txq->entries[idx].free_buf);
+ 	txq->entries[idx].free_buf = dup_buf;
+ 
+ 	trace_iwlwifi_dev_hcmd(trans->dev, cmd, cmd_size, &out_cmd->hdr_wide);
+@@ -1257,8 +1257,8 @@ static void iwl_pcie_gen2_txq_free(struc
+ 	/* De-alloc array of command/tx buffers */
+ 	if (txq_id == trans->txqs.cmd.q_id)
+ 		for (i = 0; i < txq->n_window; i++) {
+-			kzfree(txq->entries[i].cmd);
+-			kzfree(txq->entries[i].free_buf);
++			kfree_sensitive(txq->entries[i].cmd);
++			kfree_sensitive(txq->entries[i].free_buf);
+ 		}
+ 	del_timer_sync(&txq->stuck_timer);
+ 
+--- a/drivers/net/wireless/intel/iwlwifi/pcie/tx.c
++++ b/drivers/net/wireless/intel/iwlwifi/pcie/tx.c
+@@ -721,8 +721,8 @@ static void iwl_pcie_txq_free(struct iwl
+ 	/* De-alloc array of command/tx buffers */
+ 	if (txq_id == trans->txqs.cmd.q_id)
+ 		for (i = 0; i < txq->n_window; i++) {
+-			kzfree(txq->entries[i].cmd);
+-			kzfree(txq->entries[i].free_buf);
++			kfree_sensitive(txq->entries[i].cmd);
++			kfree_sensitive(txq->entries[i].free_buf);
+ 		}
+ 
+ 	/* De-alloc circular buffer of TFDs */
+@@ -1765,7 +1765,7 @@ static int iwl_pcie_enqueue_hcmd(struct
+ 	BUILD_BUG_ON(IWL_TFH_NUM_TBS > sizeof(out_meta->tbs) * BITS_PER_BYTE);
+ 	out_meta->flags = cmd->flags;
+ 	if (WARN_ON_ONCE(txq->entries[idx].free_buf))
+-		kzfree(txq->entries[idx].free_buf);
++		kfree_sensitive(txq->entries[idx].free_buf);
+ 	txq->entries[idx].free_buf = dup_buf;
+ 
+ 	trace_iwlwifi_dev_hcmd(trans->dev, cmd, cmd_size, &out_cmd->hdr_wide);
+--- a/drivers/net/wireless/intersil/orinoco/wext.c
++++ b/drivers/net/wireless/intersil/orinoco/wext.c
+@@ -31,8 +31,8 @@ static int orinoco_set_key(struct orinoc
+ 			   enum orinoco_alg alg, const u8 *key, int key_len,
+ 			   const u8 *seq, int seq_len)
+ {
+-	kzfree(priv->keys[index].key);
+-	kzfree(priv->keys[index].seq);
++	kfree_sensitive(priv->keys[index].key);
++	kfree_sensitive(priv->keys[index].seq);
+ 
+ 	if (key_len) {
+ 		priv->keys[index].key = kzalloc(key_len, GFP_ATOMIC);
+--- a/net/mac80211/aead_api.c
++++ b/net/mac80211/aead_api.c
+@@ -41,7 +41,7 @@ int aead_encrypt(struct crypto_aead *tfm
+ 	aead_request_set_ad(aead_req, sg[0].length);
+ 
+ 	crypto_aead_encrypt(aead_req);
+-	kzfree(aead_req);
++	kfree_sensitive(aead_req);
+ 
+ 	return 0;
+ }
+@@ -76,7 +76,7 @@ int aead_decrypt(struct crypto_aead *tfm
+ 	aead_request_set_ad(aead_req, sg[0].length);
+ 
+ 	err = crypto_aead_decrypt(aead_req);
+-	kzfree(aead_req);
++	kfree_sensitive(aead_req);
+ 
+ 	return err;
+ }
+--- a/net/mac80211/aes_gmac.c
++++ b/net/mac80211/aes_gmac.c
+@@ -60,7 +60,7 @@ int ieee80211_aes_gmac(struct crypto_aea
+ 	aead_request_set_ad(aead_req, GMAC_AAD_LEN + data_len);
+ 
+ 	crypto_aead_encrypt(aead_req);
+-	kzfree(aead_req);
++	kfree_sensitive(aead_req);
+ 
+ 	return 0;
+ }
+--- a/net/mac80211/key.c
++++ b/net/mac80211/key.c
+@@ -732,7 +732,7 @@ static void ieee80211_key_free_common(st
+ 		ieee80211_aes_gcm_key_free(key->u.gcmp.tfm);
+ 		break;
+ 	}
+-	kzfree(key);
++	kfree_sensitive(key);
+ }
+ 
+ static void __ieee80211_key_destroy(struct ieee80211_key *key,
+--- a/net/wireless/core.c
++++ b/net/wireless/core.c
+@@ -1131,7 +1131,7 @@ static void __cfg80211_unregister_wdev(s
+ 	}
+ 
+ #ifdef CPTCFG_CFG80211_WEXT
+-	kzfree(wdev->wext.keys);
++	kfree_sensitive(wdev->wext.keys);
+ 	wdev->wext.keys = NULL;
+ #endif
+ 	/* only initialized if we have a netdev */
+--- a/net/wireless/ibss.c
++++ b/net/wireless/ibss.c
+@@ -127,7 +127,7 @@ int __cfg80211_join_ibss(struct cfg80211
+ 		return -EINVAL;
+ 
+ 	if (WARN_ON(wdev->connect_keys))
+-		kzfree(wdev->connect_keys);
++		kfree_sensitive(wdev->connect_keys);
+ 	wdev->connect_keys = connkeys;
+ 
+ 	wdev->ibss_fixed = params->channel_fixed;
+@@ -161,7 +161,7 @@ static void __cfg80211_clear_ibss(struct
+ 
+ 	ASSERT_WDEV_LOCK(wdev);
+ 
+-	kzfree(wdev->connect_keys);
++	kfree_sensitive(wdev->connect_keys);
+ 	wdev->connect_keys = NULL;
+ 
+ 	rdev_set_qos_map(rdev, dev, NULL);
+--- a/net/wireless/lib80211_crypt_tkip.c
++++ b/net/wireless/lib80211_crypt_tkip.c
+@@ -131,7 +131,7 @@ static void lib80211_tkip_deinit(void *p
+ 		crypto_free_shash(_priv->tx_tfm_michael);
+ 		crypto_free_shash(_priv->rx_tfm_michael);
+ 	}
+-	kzfree(priv);
++	kfree_sensitive(priv);
+ }
+ 
+ static inline u16 RotR1(u16 val)
+--- a/net/wireless/lib80211_crypt_wep.c
++++ b/net/wireless/lib80211_crypt_wep.c
+@@ -56,7 +56,7 @@ static void *lib80211_wep_init(int keyid
+ 
+ static void lib80211_wep_deinit(void *priv)
+ {
+-	kzfree(priv);
++	kfree_sensitive(priv);
+ }
+ 
+ /* Add WEP IV/key info to a frame that has at least 4 bytes of headroom */
+--- a/net/wireless/nl80211.c
++++ b/net/wireless/nl80211.c
+@@ -9839,7 +9839,7 @@ static int nl80211_join_ibss(struct sk_b
+ 
+ 		if ((ibss.chandef.width != NL80211_CHAN_WIDTH_20_NOHT) &&
+ 		    no_ht) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			return -EINVAL;
+ 		}
+ 	}
+@@ -9851,7 +9851,7 @@ static int nl80211_join_ibss(struct sk_b
+ 		int r = validate_pae_over_nl80211(rdev, info);
+ 
+ 		if (r < 0) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			return r;
+ 		}
+ 
+@@ -9864,7 +9864,7 @@ static int nl80211_join_ibss(struct sk_b
+ 	wdev_lock(dev->ieee80211_ptr);
+ 	err = __cfg80211_join_ibss(rdev, dev, &ibss, connkeys);
+ 	if (err)
+-		kzfree(connkeys);
++		kfree_sensitive(connkeys);
+ 	else if (info->attrs[NL80211_ATTR_SOCKET_OWNER])
+ 		dev->ieee80211_ptr->conn_owner_nlportid = genl_info_snd_portid(info);
+ 	wdev_unlock(dev->ieee80211_ptr);
+@@ -10292,7 +10292,7 @@ static int nl80211_connect(struct sk_buf
+ 
+ 	if (info->attrs[NL80211_ATTR_HT_CAPABILITY]) {
+ 		if (!info->attrs[NL80211_ATTR_HT_CAPABILITY_MASK]) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			return -EINVAL;
+ 		}
+ 		memcpy(&connect.ht_capa,
+@@ -10310,7 +10310,7 @@ static int nl80211_connect(struct sk_buf
+ 
+ 	if (info->attrs[NL80211_ATTR_VHT_CAPABILITY]) {
+ 		if (!info->attrs[NL80211_ATTR_VHT_CAPABILITY_MASK]) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			return -EINVAL;
+ 		}
+ 		memcpy(&connect.vht_capa,
+@@ -10324,7 +10324,7 @@ static int nl80211_connect(struct sk_buf
+ 		       (rdev->wiphy.features & NL80211_FEATURE_QUIET)) &&
+ 		    !wiphy_ext_feature_isset(&rdev->wiphy,
+ 					     NL80211_EXT_FEATURE_RRM)) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			return -EINVAL;
+ 		}
+ 		connect.flags |= ASSOC_REQ_USE_RRM;
+@@ -10332,21 +10332,21 @@ static int nl80211_connect(struct sk_buf
+ 
+ 	connect.pbss = nla_get_flag(info->attrs[NL80211_ATTR_PBSS]);
+ 	if (connect.pbss && !rdev->wiphy.bands[NL80211_BAND_60GHZ]) {
+-		kzfree(connkeys);
++		kfree_sensitive(connkeys);
+ 		return -EOPNOTSUPP;
+ 	}
+ 
+ 	if (info->attrs[NL80211_ATTR_BSS_SELECT]) {
+ 		/* bss selection makes no sense if bssid is set */
+ 		if (connect.bssid) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			return -EINVAL;
+ 		}
+ 
+ 		err = parse_bss_select(info->attrs[NL80211_ATTR_BSS_SELECT],
+ 				       wiphy, &connect.bss_select);
+ 		if (err) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			return err;
+ 		}
+ 	}
+@@ -10376,13 +10376,13 @@ static int nl80211_connect(struct sk_buf
+ 		   info->attrs[NL80211_ATTR_FILS_ERP_REALM] ||
+ 		   info->attrs[NL80211_ATTR_FILS_ERP_NEXT_SEQ_NUM] ||
+ 		   info->attrs[NL80211_ATTR_FILS_ERP_RRK]) {
+-		kzfree(connkeys);
++		kfree_sensitive(connkeys);
+ 		return -EINVAL;
+ 	}
+ 
+ 	if (nla_get_flag(info->attrs[NL80211_ATTR_EXTERNAL_AUTH_SUPPORT])) {
+ 		if (!info->attrs[NL80211_ATTR_SOCKET_OWNER]) {
+-			kzfree(connkeys);
++			kfree_sensitive(connkeys);
+ 			GENL_SET_ERR_MSG(info,
+ 					 "external auth requires connection ownership");
+ 			return -EINVAL;
+@@ -10395,7 +10395,7 @@ static int nl80211_connect(struct sk_buf
+ 	err = cfg80211_connect(rdev, dev, &connect, connkeys,
+ 			       connect.prev_bssid);
+ 	if (err)
+-		kzfree(connkeys);
++		kfree_sensitive(connkeys);
+ 
+ 	if (!err && info->attrs[NL80211_ATTR_SOCKET_OWNER]) {
+ 		dev->ieee80211_ptr->conn_owner_nlportid = genl_info_snd_portid(info);
+--- a/net/wireless/sme.c
++++ b/net/wireless/sme.c
+@@ -742,7 +742,7 @@ void __cfg80211_connect_result(struct ne
+ 	}
+ 
+ 	if (cr->status != WLAN_STATUS_SUCCESS) {
+-		kzfree(wdev->connect_keys);
++		kfree_sensitive(wdev->connect_keys);
+ 		wdev->connect_keys = NULL;
+ 		wdev->ssid_len = 0;
+ 		wdev->conn_owner_nlportid = 0;
+@@ -1098,7 +1098,7 @@ void __cfg80211_disconnected(struct net_
+ 	wdev->current_bss = NULL;
+ 	wdev->ssid_len = 0;
+ 	wdev->conn_owner_nlportid = 0;
+-	kzfree(wdev->connect_keys);
++	kfree_sensitive(wdev->connect_keys);
+ 	wdev->connect_keys = NULL;
+ 
+ 	nl80211_send_disconnected(rdev, dev, reason, ie, ie_len, from_ap);
+@@ -1281,7 +1281,7 @@ int cfg80211_disconnect(struct cfg80211_
+ 
+ 	ASSERT_WDEV_LOCK(wdev);
+ 
+-	kzfree(wdev->connect_keys);
++	kfree_sensitive(wdev->connect_keys);
+ 	wdev->connect_keys = NULL;
+ 
+ 	wdev->conn_owner_nlportid = 0;
+--- a/net/wireless/util.c
++++ b/net/wireless/util.c
+@@ -867,7 +867,7 @@ void cfg80211_upload_connect_keys(struct
+ 		}
+ 	}
+ 
+-	kzfree(wdev->connect_keys);
++	kfree_sensitive(wdev->connect_keys);
+ 	wdev->connect_keys = NULL;
+ }
+ 
+--- a/net/wireless/wext-sme.c
++++ b/net/wireless/wext-sme.c
+@@ -57,7 +57,7 @@ int cfg80211_mgd_wext_connect(struct cfg
+ 	err = cfg80211_connect(rdev, wdev->netdev,
+ 			       &wdev->wext.connect, ck, prev_bssid);
+ 	if (err)
+-		kzfree(ck);
++		kfree_sensitive(ck);
+ 
+ 	return err;
+ }
+--- a/drivers/staging/rtl8723bs/core/rtw_security.c
++++ b/drivers/staging/rtl8723bs/core/rtw_security.c
+@@ -2251,7 +2251,7 @@ static void gf_mulx(u8 *pad)
+ 
+ static void aes_encrypt_deinit(void *ctx)
+ {
+-	kzfree(ctx);
++	kfree_sensitive(ctx);
+ }
+ 
+ 

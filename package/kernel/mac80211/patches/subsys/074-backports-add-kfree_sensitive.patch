@@ -1,0 +1,20 @@
+From: Felix Fietkau <nbd@nbd.name>
+Date: Thu, 26 Nov 2020 20:04:42 +0100
+Subject: [PATCH] backports: add kfree_sensitive
+
+It was renamed from kzfree in 5.9
+
+Signed-off-by: Felix Fietkau <nbd@nbd.name>
+---
+
+--- a/backport-include/linux/slab.h
++++ b/backport-include/linux/slab.h
+@@ -24,4 +24,8 @@ static inline void *kmalloc_array(size_t
+ }
+ #endif
+ 
++#if LINUX_VERSION_IS_LESS(5,9,0)
++#define kfree_sensitive kzfree
++#endif
++
+ #endif /* __BACKPORT_SLAB_H */
