@@ -7,10 +7,10 @@ ifdef CONFIG_TESTING_KERNEL
 endif
 
 LINUX_VERSION-5.4 = .82
-LINUX_VERSION-5.10 = -rc6
+LINUX_VERSION-5.10 = -rc7
 
 LINUX_KERNEL_HASH-5.4.82 = fb4458e4ea38b6c5df4ee8cee0d9b0420b5aed07e273787b045c0db48709ddaf
-LINUX_KERNEL_HASH-5.10-rc6 = d139d4cc8eb8b27364adc774c0df0feac39389beb4357a36d628a48c92fed393
+LINUX_KERNEL_HASH-5.10-rc7 = 9f95194fc84eef01789f2ed6566518ef597e9c6541b640f7276f2a3ef1a221f2
 
 remove_uri_prefix=$(subst git://,,$(subst http://,,$(subst https://,,$(1))))
 sanitize_uri=$(call qstrip,$(subst @,_,$(subst :,_,$(subst .,_,$(subst -,_,$(subst /,_,$(1)))))))
