@@ -59,7 +59,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  }
 --- a/net/bridge/br_device.c
 +++ b/net/bridge/br_device.c
-@@ -392,6 +392,59 @@ static int br_del_slave(struct net_devic
+@@ -398,6 +398,59 @@ static int br_del_slave(struct net_devic
  	return br_del_if(br, slave_dev);
  }
  
@@ -119,7 +119,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  static int br_fill_forward_path(struct net_device_path_ctx *ctx,
  				struct net_device_path *path)
  {
-@@ -403,7 +456,10 @@ static int br_fill_forward_path(struct n
+@@ -409,7 +462,10 @@ static int br_fill_forward_path(struct n
  		return -1;
  
  	br = netdev_priv(ctx->dev);
@@ -131,7 +131,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  	if (!f || !f->dst)
  		return -1;
  
-@@ -411,10 +467,26 @@ static int br_fill_forward_path(struct n
+@@ -417,10 +473,26 @@ static int br_fill_forward_path(struct n
  	if (!dst)
  		return -1;
  
